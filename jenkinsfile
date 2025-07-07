@@ -1,0 +1,64 @@
+pipeline {
+    agent any
+
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    stages {
+
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/shreyaalwal/Cloud-Calculator-App-on-AWS.git'
+            }
+        }
+
+        stage('Trivy FS Scan') {
+            steps {
+                sh 'trivy fs --format table -o fs-report.html . || true'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh '''${SCANNER_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectKey=html-site \
+                        -Dsonar.projectName=shreya500/node:18 \
+                        -Dsonar.sources=. \
+                        -Dsonar.sourceEncoding=UTF-8'''
+                }
+            }
+        }
+
+        stage('Build & Tag Docker Image') {
+            steps {
+                script {
+                    docker.build('shreya500/node:18')
+                }
+            }
+        }
+
+        stage('Scan Docker Image with Trivy') {
+            steps {
+                sh 'trivy image --format table -o image-report.html shreya500/node:18 || true'
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'dockerhub') {
+                        sh 'docker push shreya500/node:18'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: '*.html', allowEmptyArchive: true
+        }
+    }
+}
